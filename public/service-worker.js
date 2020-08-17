@@ -1,65 +1,54 @@
-const cacheName = "v1";
-const Data_catcheName = "API_v1";
-
-// Call install event
-self.addEventListener("install", (event) => {
+var CACHE_NAME = "my-site-cache-v1";
+const DATA_CACHE_NAME = "data-cache-v1";
+var urlsToCache = [
+  "/",
+  "/db.js",
+  "/index.js",
+  "/manifest.json",
+  "/styles.css",
+  "/icons/icon-192x192.png",
+  "/icons/icon-512x512.png"
+];
+self.addEventListener("install", function(event) {
+  // Perform install steps
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(function(cache) {
+      console.log("Opened cache");
+      return cache.addAll(urlsToCache);
+    })
+  );
 });
-
-// Activate
-self.addEventListener("activate", (event) => {
-    // Remove unwanted caches
-    event.waitUntil(
-        caches.keys().then(cacheName => {
-            return Promise.all(
-                cacheName.map(cache => {
-                    if (cache !== cacheName) {
-                        return caches.delete(cache);
-                    }
-                })
-            )
-        })
-    );
-});
-
-// Fetch
-self.addEventListener("fetch", event => {
-    if (event.request.url.includes("/api/")){
-        event.respondWith(
-            caches.open(Data_catcheName)
-                .then(cache => {
-                    return fetch(event.request)
-                        .then(response => {
-                            if (response.status === 200) {
-                                cache.put(event.request.url, response.clone());
-                            }
-                            return response;
-                        })
-                        .catch(err => {
-                            return cache.match(event.request);
-                        });
-                })
-                .catch(err => console.log(err))
-        );
-        return;
-    }
+self.addEventListener("fetch", function(event) {
+  // cache all get requests to /api routes
+  if (event.request.url.includes("/api/")) {
     event.respondWith(
-        fetch(event.request)
-        .then(res => {
-            // Make clone of response
-            const resClone = res.clone();
-            // Open Cache
-            caches
-                .open(cacheName)
-                .then(cache => {
-                    // Add response to cache
-                    cache.put(event.request, resClone);
-                });
-            return res;
-        })
-        .catch(err => {
-            caches.match(event.request)
-                .then(res => res)
-        })
-    )
-
-})
+      caches.open(DATA_CACHE_NAME).then(cache => {
+        return fetch(event.request)
+          .then(response => {
+            // If the response was good, clone it and store it in the cache.
+            if (response.status === 200) {
+              cache.put(event.request.url, response.clone());
+            }
+            return response;
+          })
+          .catch(err => {
+            // Network request failed, try to get it from the cache.
+            return cache.match(event.request);
+          });
+      }).catch(err => console.log(err))
+    );
+    return;
+  }
+  event.respondWith(
+    fetch(event.request).catch(function() {
+      return caches.match(event.request).then(function(response) {
+        if (response) {
+          return response;
+        } else if (event.request.headers.get("accept").includes("text/html")) {
+          // return the cached home page for all requests for html pages
+          return caches.match("/");
+        }
+      });
+    })
+  );
+});
